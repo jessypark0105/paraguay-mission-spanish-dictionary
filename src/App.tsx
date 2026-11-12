@@ -29,11 +29,11 @@ function loadFavorites(): number[] {
 }
 
 function speak(text: string) {
-  if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) {
+  if (typeof window.speechSynthesis?.speak !== 'function') {
     window.alert('이 브라우저는 음성 재생을 지원하지 않아요. 카드의 발음 표기를 참고해 주세요.');
     return;
   }
-  const utterance = new SpeechSynthesisUtterance(text.replaceAll('___', ''));
+  const utterance = new SpeechSynthesisUtterance(text.replace(/___/g, ''));
   const voices = window.speechSynthesis.getVoices();
   const spanishVoices = voices.filter((voice) => voice.lang.toLowerCase().startsWith('es'));
   const voice = spanishVoices.find((item) => item.lang.toLowerCase() === 'es-py')
