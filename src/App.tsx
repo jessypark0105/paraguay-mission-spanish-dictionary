@@ -149,11 +149,6 @@ function App() {
     if (activeSubcategory) filtered = filtered.filter((phrase) => phrase.subcategory === activeSubcategory);
     return searchPhrases(query, filtered);
   }, [activeCategory, activeSubcategory, favorites, query]);
-  const needsSubcategory = activeCategory !== ALL_CATEGORIES
-    && activeCategory !== FAVORITES
-    && !activeSubcategory
-    && !query;
-
   const setCategory = (nextCategory: typeof activeCategory, subcategory = '') => {
     setActiveCategory(nextCategory);
     setActiveSubcategory(subcategory);
@@ -317,14 +312,10 @@ function App() {
               </nav>
             )}
             <div className="results-summary" aria-live="polite">
-              {needsSubcategory
-                ? '세부 분류를 선택하세요'
-                : `${visiblePhrases.length}개 문장${category ? ` · ${category.label}` : activeCategory === FAVORITES ? ' · 즐겨찾기' : ''}${activeSubcategory ? ` · ${subcategoryLabels[activeSubcategory] ?? activeSubcategory}` : ''}`}
+              {`${visiblePhrases.length}개 문장${category ? ` · ${category.label}` : activeCategory === FAVORITES ? ' · 즐겨찾기' : ''}${activeSubcategory ? ` · ${subcategoryLabels[activeSubcategory] ?? activeSubcategory}` : ''}`}
             </div>
             <section className="phrase-list" aria-label="검색 결과">
-              {needsSubcategory ? (
-                <div className="empty-state">원하는 상황을 눌러 문장을 좁혀 보세요. 위 검색창을 사용하면 이 분류의 전체 문장을 검색할 수 있어요.</div>
-              ) : visiblePhrases.length ? visiblePhrases.map((phrase) => {
+              {visiblePhrases.length ? visiblePhrases.map((phrase) => {
                 const isFavorite = favorites.includes(phrase.id);
                 return (
                   <article className="phrase-card" key={phrase.id}>
