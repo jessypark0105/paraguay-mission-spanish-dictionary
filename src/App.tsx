@@ -1,82 +1,189 @@
-import { useEffect, useMemo, useState } from 'react';
-import { categories, conversations, phrases, type Phrase } from './data/phrases';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  categories,
+  phrases,
+  quickAccess,
+  searchPhrases,
+  type DictionaryCategory,
+  type DictionaryPhrase,
+} from './data/dictionary';
+import { conversations } from './data/phrases';
 
 const FAVORITES_KEY = 'paraguay-spanish-favorites-v1';
+const RECENTS_KEY = 'paraguay-spanish-recents-v1';
+const ALL_CATEGORIES = 'All';
+const FAVORITES = 'Favorites';
+const subcategoryLabels: Record<string, string> = {
+  'Greetings & Introductions': '인사 및 자기소개',
+  'Getting to Know Children': '아이들과 친해지기',
+  'Games & Activities': '게임 및 활동',
+  'Bible Lessons & Teaching': '성경공부 및 공과',
+  'Singing & Dancing': '찬양 및 율동',
+  'Arts & Crafts': '만들기 및 공예',
+  'Snacks & Breaks': '간식 및 휴식',
+  'Classroom Management & Safety': '질서 및 안전',
+  'Prayer & Gospel for Kids': '어린이 기도 및 복음',
+  'Goodbye & Blessings': '작별 및 축복',
+  'Starting Conversations': '대화 시작하기',
+  'Sharing the Gospel': '복음 나누기',
+  'Personal Testimony': '개인 간증',
+  'Responding to Questions': '질문에 답하기',
+  'Invitations & Follow-Up': '초대 및 후속 만남',
+  'Small Talk': '가벼운 대화',
+  'Making Friends': '친구 사귀기',
+  'Understanding & Communication': '이해 및 의사소통',
+  'Common Responses': '자주 쓰는 표현',
+  'Airport & Immigration': '공항 및 입국',
+  Transportation: '교통',
+  'Hotels & Accommodations': '호텔 및 숙소',
+  'Sightseeing & Tourism': '관광',
+  'Travel Problems': '여행 중 문제',
+  Bathrooms: '화장실',
+  'Asking for Directions': '길 묻기',
+  'Understanding Directions': '방향 이해하기',
+  'Finding Places': '장소 찾기',
+  'Ordering Food': '음식 주문',
+  Drinks: '음료',
+  'Dietary Needs': '식이 및 알레르기',
+  Paying: '결제',
+  'Paraguayan Food': '파라과이 음식',
+  'Asking Prices': '가격 묻기',
+  'Shopping Conversations': '쇼핑 대화',
+  Payments: '결제',
+  'Markets & Souvenirs': '시장 및 기념품',
+  'Common Symptoms': '일반 증상',
+  'Medical Help': '의료 도움',
+  'Emergency Situations': '긴급 상황',
+  Safety: '안전',
+  'Church Services': '교회 예배',
+  'Worship & Music': '예배 및 음악',
+  'Working with Local Volunteers': '현지 봉사자와 협력',
+  'Ministry Logistics': '사역 준비 및 일정',
+  'Offering Prayer': '기도 제안',
+  'Prayer Expressions': '기도 표현',
+  'Encouragement & Comfort': '격려 및 위로',
+  'Gratitude & Blessings': '감사 및 축복',
+};
 type View = 'dictionary' | 'conversations';
 
-const categoryLabels: Record<string, string> = {
-  'All': '전체',
-  'Favorites': '즐겨찾기',
-  'Greetings': '인사',
-  'Introductions': '자기소개',
-  'Directions & Transportation': '길 찾기 · 교통',
-  'Shopping': '쇼핑',
-  'Food': '음식',
-  'Emergencies': '긴급 상황',
-  'Children & Activities': '어린이 · 활동',
-  'Church & Ministry': '교회 · 사역',
-  'Gospel': '복음',
-  'Prayer & Blessings': '기도 · 축복'
-};
-
-function loadFavorites(): number[] {
+function readStorage<T>(key: string, fallback: T): T {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]');
-    return Array.isArray(value) ? value.filter((id): id is number => Number.isInteger(id)) : [];
+    const value: unknown = JSON.parse(localStorage.getItem(key) ?? 'null');
+    return value === null ? fallback : value as T;
   } catch {
-    return [];
+    return fallback;
   }
 }
 
-function speak(text: string) {
-  if (typeof window.speechSynthesis?.speak !== 'function') {
-    window.alert('이 브라우저는 음성 재생을 지원하지 않아요. 카드의 발음 표기를 참고해 주세요.');
-    return;
-  }
-  const utterance = new SpeechSynthesisUtterance(text.replace(/___/g, ''));
-  const voices = window.speechSynthesis.getVoices();
-  const spanishVoices = voices.filter((voice) => voice.lang.toLowerCase().startsWith('es'));
-  const voice = spanishVoices.find((item) => item.lang.toLowerCase() === 'es-py')
-    ?? spanishVoices.find((item) => item.lang.toLowerCase() === 'es-es')
-    ?? spanishVoices[0];
-  utterance.lang = voice?.lang ?? 'es-ES';
-  if (voice) utterance.voice = voice;
-  utterance.rate = 0.86;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utterance);
+function loadFavorites(): number[] {
+  const saved = readStorage<unknown>(FAVORITES_KEY, []);
+  return Array.isArray(saved) ? saved.filter((id): id is number => Number.isInteger(id)) : [];
+}
+
+function loadRecentSearches(): string[] {
+  const saved = readStorage<unknown>(RECENTS_KEY, []);
+  return Array.isArray(saved) ? saved.filter((query): query is string => typeof query === 'string').slice(0, 8) : [];
 }
 
 function App() {
   const [query, setQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState('All');
+  const [activeCategory, setActiveCategory] = useState<DictionaryCategory | typeof ALL_CATEGORIES | typeof FAVORITES>(ALL_CATEGORIES);
+  const [activeSubcategory, setActiveSubcategory] = useState('');
   const [favorites, setFavorites] = useState<number[]>(loadFavorites);
+  const [recentSearches, setRecentSearches] = useState<string[]>(loadRecentSearches);
+  const [showRecents, setShowRecents] = useState(false);
+  const [showFavorites, setShowFavorites] = useState(false);
   const [view, setView] = useState<View>('dictionary');
+  const [showLocalPhrase, setShowLocalPhrase] = useState<DictionaryPhrase | null>(null);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites)); } catch { /* storage may be disabled */ }
+    try {
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+    } catch {
+      // Favorites remain available for the current session when storage is disabled.
+    }
   }, [favorites]);
 
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase();
-    return phrases.filter((phrase) => {
-      const categoryMatches = activeCategory === 'All'
-        || (activeCategory === 'Favorites' ? favorites.includes(phrase.id) : phrase.category === activeCategory);
-      const text = [phrase.spanish, phrase.korean, phrase.pronunciation, phrase.category, ...phrase.tags].join(' ').toLocaleLowerCase();
-      return categoryMatches && (!needle || text.includes(needle));
-    });
-  }, [activeCategory, favorites, query]);
-
-  const toggleFavorite = (id: number) => setFavorites((current) =>
-    current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
-  );
-
-  const playPhrase = (phrase: Phrase) => {
-    if (phrase.tags.includes('과라니어')) {
-      window.alert('과라니어는 스페인어 음성으로 정확하게 읽을 수 없어요. 발음 표기를 참고해 주세요.');
-      return;
+  useEffect(() => {
+    try {
+      localStorage.setItem(RECENTS_KEY, JSON.stringify(recentSearches));
+    } catch {
+      // Recent searches remain available for the current session when storage is disabled.
     }
-    speak(phrase.spanish);
+  }, [recentSearches]);
+
+  useEffect(() => {
+    const updateNetworkStatus = () => setIsOnline(navigator.onLine);
+    window.addEventListener('online', updateNetworkStatus);
+    window.addEventListener('offline', updateNetworkStatus);
+    return () => {
+      window.removeEventListener('online', updateNetworkStatus);
+      window.removeEventListener('offline', updateNetworkStatus);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showLocalPhrase) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowLocalPhrase(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [showLocalPhrase]);
+
+  const category = categories.find((item) => item.id === activeCategory);
+  const subcategories = useMemo(() => {
+    if (!category) return [];
+    return [...new Set(phrases.filter((phrase) => phrase.category === category.id).map((phrase) => phrase.subcategory))];
+  }, [category]);
+
+  const visiblePhrases = useMemo(() => {
+    let filtered = phrases;
+    if (activeCategory === FAVORITES) {
+      filtered = phrases.filter((phrase) => favorites.includes(phrase.id));
+    } else if (activeCategory !== ALL_CATEGORIES) {
+      filtered = phrases.filter((phrase) => phrase.category === activeCategory);
+    }
+    if (activeSubcategory) filtered = filtered.filter((phrase) => phrase.subcategory === activeSubcategory);
+    return searchPhrases(query, filtered);
+  }, [activeCategory, activeSubcategory, favorites, query]);
+  const needsSubcategory = activeCategory !== ALL_CATEGORIES
+    && activeCategory !== FAVORITES
+    && !activeSubcategory
+    && !query;
+
+  const setCategory = (nextCategory: typeof activeCategory, subcategory = '') => {
+    setActiveCategory(nextCategory);
+    setActiveSubcategory(subcategory);
+    setShowFavorites(nextCategory === FAVORITES);
+    setView('dictionary');
+    setShowRecents(false);
+    setQuery('');
   };
+
+  const rememberSearch = (search: string) => {
+    const trimmed = search.trim();
+    if (!trimmed) return;
+    setRecentSearches((current) => [trimmed, ...current.filter((item) => item.toLocaleLowerCase() !== trimmed.toLocaleLowerCase())].slice(0, 8));
+  };
+
+  const toggleFavorite = (id: number) => {
+    setFavorites((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  };
+
+  const selectRecentSearch = (search: string) => {
+    setQuery(search);
+    setActiveCategory(ALL_CATEGORIES);
+    setActiveSubcategory('');
+    setShowFavorites(false);
+    setView('dictionary');
+    setShowRecents(false);
+    searchRef.current?.focus();
+  };
+
+  const isDefaultHome = activeCategory === ALL_CATEGORIES && !query && !showFavorites;
 
   return (
     <div className="app-shell">
@@ -84,52 +191,175 @@ function App() {
         <div className="brand-mark" aria-hidden="true">🇵🇾</div>
         <div className="eyebrow">Misión Paraguay</div>
         <h1>선교 스페인어 사전</h1>
-        <p>오프라인 검색 · 한국어 / Español · 실전 대화</p>
+        <p>파라과이에서 바로 쓰는 한국어 · 스페인어 phrasebook</p>
+        <div className={`offline-status ${isOnline ? '' : 'offline'}`} role="status">
+          <span aria-hidden="true">{isOnline ? '●' : '○'}</span>
+          {isOnline ? '오프라인에서도 사용 가능' : '오프라인 사용 중'}
+        </div>
       </header>
+
       <main className="content-wrap">
         <section className="search-panel" aria-label="문장 검색">
-          <label htmlFor="phrase-search">🔎 문장 검색</label>
-          <input id="phrase-search" className="search-input" type="search" value={query}
-            onChange={(event) => setQuery(event.target.value)} placeholder="예: 화장실, 감사합니다, Dios..." autoComplete="off" />
-          <div className="search-hint">한국어 · Español · 발음으로 바로 찾기</div>
-        </section>
-        <nav className="view-tabs" aria-label="화면 선택">
-          <button type="button" className={view === 'dictionary' ? 'active' : ''} onClick={() => setView('dictionary')}>📖 문장 사전</button>
-          <button type="button" className={view === 'conversations' ? 'active' : ''} onClick={() => setView('conversations')}>💬 실전 대화</button>
-        </nav>
-        {view === 'dictionary' ? <>
-          <div className="chip-row" aria-label="분류 선택">
-            {['All', 'Favorites', ...categories].map((category) => <button type="button" key={category}
-              className={`chip ${activeCategory === category ? 'active' : ''}`} onClick={() => setActiveCategory(category)}>
-              {categoryLabels[category] ?? category}
-            </button>)}
-          </div>
-          <div className="results-summary" aria-live="polite">{filtered.length}개 문장</div>
-          <p className="notice">🔊 음성 재생은 기기에 설치된 스페인어 음성을 사용합니다. 지원되지 않는 경우 발음 표기를 참고해 주세요. 과라니어는 음성 재생을 제공하지 않습니다.</p>
-          <section className="phrase-list" aria-label="검색 결과">
-            {filtered.length ? filtered.map((phrase) => <article className="phrase-card" key={phrase.id}>
-              <div className="phrase-meta"><span>{categoryLabels[phrase.category]}</span>
-                <button type="button" className={`favorite-button ${favorites.includes(phrase.id) ? 'active' : ''}`}
-                  onClick={() => toggleFavorite(phrase.id)} aria-label={favorites.includes(phrase.id) ? '즐겨찾기 해제' : '즐겨찾기 추가'}
-                  aria-pressed={favorites.includes(phrase.id)}>{favorites.includes(phrase.id) ? '★' : '☆'}</button>
+          <label htmlFor="phrase-search">🔎 영어 또는 한국어로 검색</label>
+          <input
+            ref={searchRef}
+            id="phrase-search"
+            className="search-input"
+            type="search"
+            value={query}
+            onFocus={() => setShowRecents(true)}
+            onBlur={() => {
+              window.setTimeout(() => setShowRecents(false), 120);
+              rememberSearch(query);
+            }}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setView('dictionary');
+              setShowRecents(!event.target.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                rememberSearch(query);
+                setShowRecents(false);
+                searchRef.current?.blur();
+              }
+              if (event.key === 'Escape') setShowRecents(false);
+            }}
+            placeholder="예: bathroom, hungry, 화장실, 기도"
+            autoComplete="off"
+            enterKeyHint="search"
+          />
+          <div className="search-hint">기본은 전체 분류 검색 · 분류를 고르면 해당 분류 안에서 검색 · 스페인어 제외</div>
+          {showRecents && !query && recentSearches.length > 0 && (
+            <div className="recent-searches">
+              <div className="recent-heading"><strong>최근 검색</strong>
+                <button type="button" className="text-button" onMouseDown={(event) => event.preventDefault()} onClick={() => setRecentSearches([])}>지우기</button>
               </div>
-              <div className="spanish-text" lang="es">{phrase.spanish}</div>
-              <div className="korean-text">{phrase.korean}</div>
-              <div className="pronunciation">발음: {phrase.pronunciation}</div>
-              <div className="phrase-actions"><button type="button" className="audio-button" onClick={() => playPhrase(phrase)}>🔊 스페인어 듣기</button></div>
-            </article>) : <div className="empty-state">검색 결과가 없어요. 다른 단어를 입력해 보세요.</div>}
+              {recentSearches.map((search) => (
+                <button type="button" className="recent-item" key={search} onMouseDown={(event) => event.preventDefault()} onClick={() => selectRecentSearch(search)}>
+                  ↺ {search}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="quick-access" aria-label="빠른 검색">
+          <h2>빠른 찾기</h2>
+          <div className="quick-row">
+            {quickAccess.map((item) => (
+              <button type="button" className="quick-chip" key={item.label}
+                onClick={() => setCategory(item.category, item.subcategory)}>
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <div className="view-tabs" aria-label="문장 모음 선택">
+          <button type="button" className={view === 'dictionary' && !showFavorites ? 'active' : ''} onClick={() => setCategory(ALL_CATEGORIES)}>📖 사전</button>
+          <button type="button" className={showFavorites ? 'active' : ''} onClick={() => setCategory(FAVORITES)}>★ 즐겨찾기{favorites.length ? ` ${favorites.length}` : ''}</button>
+          <button type="button" className={view === 'conversations' ? 'active' : ''} onClick={() => { setView('conversations'); setShowRecents(false); }}>💬 실전 대화</button>
+        </div>
+
+        {view === 'conversations' ? (
+          <section className="dialogue-panel" aria-label="실전 대화 예시">
+            {conversations.map((conversation) => (
+              <article className="dialogue-card" key={conversation.title}>
+                <h2>{conversation.title}</h2>
+                {conversation.lines.map((line, index) => (
+                  <div className="dialogue-line" key={`${conversation.title}-${index}`}>
+                    <span className="dialogue-speaker">{line.speaker === 'A' ? '나' : '상대방'}</span>
+                    <p lang="es">{line.spanish}</p>
+                    <small>{line.korean}</small>
+                  </div>
+                ))}
+              </article>
+            ))}
           </section>
-        </> : <section className="dialogue-panel" aria-label="실전 대화">
-          {conversations.map((conversation) => <article className="dialogue-card" key={conversation.title}>
-            <h2>{conversation.title}</h2>
-            {conversation.lines.map((line, index) => <div className="dialogue-line" key={`${conversation.title}-${index}`}>
-              <strong>{line.speaker}</strong><p lang="es">{line.spanish}</p><small>{line.korean}</small>
-              <button type="button" className="audio-button small" onClick={() => speak(line.spanish)}>🔊 듣기</button>
-            </div>)}
-          </article>)}
-        </section>}
-        <footer className="app-footer">선교팀을 위한 오프라인 학습 자료 · 발음은 참고용 표기입니다.</footer>
+        ) : isDefaultHome ? (
+          <section className="category-section" aria-label="주요 분류">
+            <div className="section-heading">
+              <h2>상황별 문장</h2>
+              <span>10개 분류 · {phrases.length}개 문장</span>
+            </div>
+            <div className="category-grid">
+              {categories.map((item) => {
+                const count = phrases.filter((phrase) => phrase.category === item.id).length;
+                return (
+                  <button type="button" className="category-card" key={item.id} onClick={() => setCategory(item.id)}>
+                    <span className="category-icon" aria-hidden="true">{item.icon}</span>
+                    <span className="category-name">{item.label}</span>
+                    <span className="category-count">{count}개 문장</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : (
+          <>
+            <nav className="category-nav" aria-label="분류 선택">
+              <button type="button" className={`chip ${activeCategory === ALL_CATEGORIES ? 'active' : ''}`} onClick={() => setCategory(ALL_CATEGORIES)}>전체</button>
+              {categories.map((item) => (
+                <button type="button" className={`chip ${activeCategory === item.id ? 'active' : ''}`} key={item.id} onClick={() => setCategory(item.id)}>
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+            {category && (
+              <nav className="subcategory-nav" aria-label={`${category.label} 세부 분류`}>
+                <button type="button" className={`subcategory-chip ${!activeSubcategory ? 'active' : ''}`} onClick={() => setActiveSubcategory('')}>전체</button>
+                {subcategories.map((subcategory) => (
+                  <button type="button" className={`subcategory-chip ${activeSubcategory === subcategory ? 'active' : ''}`} key={subcategory} onClick={() => setActiveSubcategory(subcategory)}>
+                    {subcategoryLabels[subcategory] ?? subcategory}
+                  </button>
+                ))}
+              </nav>
+            )}
+            <div className="results-summary" aria-live="polite">
+              {needsSubcategory
+                ? '세부 분류를 선택하세요'
+                : `${visiblePhrases.length}개 문장${category ? ` · ${category.label}` : activeCategory === FAVORITES ? ' · 즐겨찾기' : ''}${activeSubcategory ? ` · ${subcategoryLabels[activeSubcategory] ?? activeSubcategory}` : ''}`}
+            </div>
+            <section className="phrase-list" aria-label="검색 결과">
+              {needsSubcategory ? (
+                <div className="empty-state">원하는 상황을 눌러 문장을 좁혀 보세요. 위 검색창을 사용하면 이 분류의 전체 문장을 검색할 수 있어요.</div>
+              ) : visiblePhrases.length ? visiblePhrases.map((phrase) => {
+                const isFavorite = favorites.includes(phrase.id);
+                return (
+                  <article className="phrase-card" key={phrase.id}>
+                    <div className="phrase-meta">
+                      <span>{categories.find((item) => item.id === phrase.category)?.label} <span aria-hidden="true">·</span> {subcategoryLabels[phrase.subcategory] ?? phrase.subcategory}</span>
+                      <button type="button" className={`favorite-button ${isFavorite ? 'active' : ''}`}
+                        onClick={() => toggleFavorite(phrase.id)} aria-label={isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+                        aria-pressed={isFavorite}>{isFavorite ? '★' : '☆'}</button>
+                    </div>
+                    <div className="spanish-text" lang="es">{phrase.spanish}</div>
+                    <div className="korean-text">{phrase.korean}</div>
+                    <div className="pronunciation"><span>발음</span>{phrase.pronunciation}</div>
+                    <div className="phrase-actions">
+                      <button type="button" className="show-local-button" onClick={() => setShowLocalPhrase(phrase)}>현지인에게 보여주기</button>
+                    </div>
+                  </article>
+                );
+              }) : <div className="empty-state">{query ? '검색 결과가 없어요. 다른 영어 또는 한국어 단어를 입력해 보세요.' : activeCategory === FAVORITES ? '아직 저장한 즐겨찾기가 없어요.' : '이 분류에는 문장이 없어요.'}</div>}
+            </section>
+          </>
+        )}
+        <footer className="app-footer">오프라인에서 사용 가능 · 한국어 발음은 참고용 표기입니다.</footer>
       </main>
+
+      {showLocalPhrase && (
+        <div className="show-local-overlay" role="presentation" onClick={() => setShowLocalPhrase(null)}>
+          <section className="show-local-view" role="dialog" aria-modal="true" aria-label="현지인에게 보여줄 문장" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="close-local-button" onClick={() => setShowLocalPhrase(null)} aria-label="닫기">×</button>
+            <div className="show-local-label">Por favor, lea esto</div>
+            <p className="show-local-spanish" lang="es">{showLocalPhrase.spanish}</p>
+            <p className="show-local-korean">{showLocalPhrase.korean}</p>
+            <p className="show-local-pronunciation">{showLocalPhrase.pronunciation}</p>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

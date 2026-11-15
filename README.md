@@ -3,11 +3,12 @@
 A mobile-first Progressive Web App for church mission teams traveling to Paraguay.
 
 ## Features
-- Instant Korean/Spanish search with partial matches
-- 200+ practical phrases organized by category
+- Instant English/Korean search with ranked partial and typo-tolerant matches
+- 10 categories and subcategories, including VBS, travel, food, health, and ministry
+- 450+ practical phrases with Korean translations, pronunciation, and search synonyms
+- Favorites and recent searches stored locally on the device
+- Full-screen Spanish phrase display for showing phrases to local speakers
 - Spanish, Korean translation, and pronunciation guidance
-- Browser speech playback with Spanish voice selection
-- Local favorites using `localStorage`
 - Offline-ready PWA support with `vite-plugin-pwa`
 - GitHub Pages deployment workflow
 
@@ -37,4 +38,6 @@ npm run preview
 ## Notes
 - The app is designed for iPhone Safari and Android browsers.
 - The app works offline after the first successful load.
-- Favorites are stored locally on the device.
+- Favorites and recent searches are stored locally on the device.
+- Phrase search uses English and Korean metadata only; it does not search Spanish text.
+- No audio or external services are used.
