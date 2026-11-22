@@ -8,11 +8,14 @@ import {
   type DictionaryPhrase,
 } from './data/dictionary';
 import { conversations } from './data/phrases';
+import { numberToKoreanPronunciation, numberToSpanish } from './data/spanishNumbers';
 
 const FAVORITES_KEY = 'paraguay-spanish-favorites-v1';
 const RECENTS_KEY = 'paraguay-spanish-recents-v1';
 const ALL_CATEGORIES = 'All';
 const FAVORITES = 'Favorites';
+const MAX_NUMBER = 999_999;
+const numberExamples = [1_000, 5_000, 25_000, 50_000, 100_000];
 const subcategoryLabels: Record<string, string> = {
   'Greetings & Introductions': '인사 및 자기소개',
   'Getting to Know Children': '아이들과 친해지기',
@@ -64,7 +67,7 @@ const subcategoryLabels: Record<string, string> = {
   'Encouragement & Comfort': '격려 및 위로',
   'Gratitude & Blessings': '감사 및 축복',
 };
-type View = 'dictionary' | 'conversations';
+type View = 'dictionary' | 'conversations' | 'numbers';
 
 function readStorage<T>(key: string, fallback: T): T {
   try {
@@ -94,6 +97,7 @@ function App() {
   const [showRecents, setShowRecents] = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
   const [view, setView] = useState<View>('dictionary');
+  const [numberInput, setNumberInput] = useState('');
   const [showLocalPhrase, setShowLocalPhrase] = useState<DictionaryPhrase | null>(null);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -179,6 +183,18 @@ function App() {
   };
 
   const isDefaultHome = activeCategory === ALL_CATEGORIES && !query && !showFavorites;
+  const parsedNumber = numberInput ? Number(numberInput) : null;
+  const spanishNumber = parsedNumber !== null && parsedNumber <= MAX_NUMBER ? numberToSpanish(parsedNumber) : null;
+  const formattedNumber = parsedNumber !== null && parsedNumber <= MAX_NUMBER
+    ? new Intl.NumberFormat('es-PY').format(parsedNumber)
+    : '';
+  const koreanNumberPronunciation = spanishNumber ? numberToKoreanPronunciation(spanishNumber) : undefined;
+  const openNumbers = () => {
+    setView('numbers');
+    setShowRecents(false);
+    setQuery('');
+    setNumberInput('');
+  };
 
   return (
     <div className="app-shell">
@@ -194,6 +210,7 @@ function App() {
       </header>
 
       <main className="content-wrap">
+        {view !== 'numbers' && <>
         <section className="search-panel" aria-label="문장 검색">
           <label htmlFor="phrase-search">🔎 영어 또는 한국어로 검색</label>
           <input
@@ -256,8 +273,54 @@ function App() {
           <button type="button" className={showFavorites ? 'active' : ''} onClick={() => setCategory(FAVORITES)}>★ 즐겨찾기{favorites.length ? ` ${favorites.length}` : ''}</button>
           <button type="button" className={view === 'conversations' ? 'active' : ''} onClick={() => { setView('conversations'); setShowRecents(false); }}>💬 실전 대화</button>
         </div>
+        </>}
 
-        {view === 'conversations' ? (
+        {view === 'numbers' ? (
+          <section className="number-converter" aria-label="숫자 스페인어 변환기">
+            <button type="button" className="back-to-dictionary" onClick={() => setCategory(ALL_CATEGORIES)}>← 사전으로 돌아가기</button>
+            <div className="number-converter-card">
+              <span className="number-converter-icon" aria-hidden="true">123</span>
+              <h2>123 Numbers</h2>
+              <p className="number-converter-description">숫자를 입력하면 스페인어로 바로 바꿔 드려요.</p>
+              <label htmlFor="number-input">숫자 입력 (0–999.999)</label>
+              <div className="number-input-wrap">
+                <input
+                  id="number-input"
+                  className="number-input"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="off"
+                  value={numberInput}
+                  onChange={(event) => setNumberInput(event.target.value.replace(/\D/g, ''))}
+                  placeholder="예: 25000"
+                  aria-describedby="number-input-hint"
+                />
+              </div>
+              <p id="number-input-hint" className="number-input-hint">최대 999.999까지 입력할 수 있어요.</p>
+              <div className="number-examples" aria-label="자주 쓰는 금액">
+                {numberExamples.map((example) => (
+                  <button type="button" className="number-example" key={example} onClick={() => setNumberInput(String(example))}>
+                    {new Intl.NumberFormat('es-PY').format(example)}
+                  </button>
+                ))}
+              </div>
+              <div className="number-result" aria-live="polite" aria-atomic="true">
+                {parsedNumber !== null && parsedNumber > MAX_NUMBER ? (
+                  <p className="number-error">999.999 이하의 숫자를 입력해 주세요.</p>
+                ) : spanishNumber !== null ? (
+                  <>
+                    <span className="number-result-label">{formattedNumber} en español</span>
+                    <p className="number-result-spanish" lang="es">{spanishNumber}</p>
+                    {koreanNumberPronunciation && <p className="number-result-pronunciation"><span>발음 (참고)</span>{koreanNumberPronunciation}</p>}
+                  </>
+                ) : (
+                  <p className="number-result-placeholder">스페인어 표기가 여기에 표시됩니다.</p>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : view === 'conversations' ? (
           <section className="dialogue-panel" aria-label="실전 대화 예시">
             {conversations.map((conversation) => (
               <article className="dialogue-card" key={conversation.title}>
@@ -278,6 +341,11 @@ function App() {
               <h2>상황별 문장</h2>
               <span>10개 분류 · {phrases.length}개 문장</span>
             </div>
+            <button type="button" className="category-card numbers-feature-card" onClick={openNumbers}>
+              <span className="category-icon" aria-hidden="true">123</span>
+              <span className="category-name">123 Numbers</span>
+              <span className="category-count">숫자와 쇼핑 금액을 스페인어로 변환</span>
+            </button>
             <div className="category-grid">
               {categories.map((item) => {
                 const count = phrases.filter((phrase) => phrase.category === item.id).length;
