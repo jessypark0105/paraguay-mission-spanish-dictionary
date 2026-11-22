@@ -1,6 +1,6 @@
-import type { DictionaryPhrase } from './dictionary';
+import type { SpanishDictionaryPhrase } from './dictionary';
 
-type NewPhrase = Omit<DictionaryPhrase, 'id'>;
+type NewPhrase = Omit<SpanishDictionaryPhrase, 'id'>;
 
 const vbs = (subcategory: string, rows: [string, string, string, string, string][]): NewPhrase[] =>
   rows.map(([spanish, korean, pronunciation, englishKeywords, koreanSynonyms]) => ({

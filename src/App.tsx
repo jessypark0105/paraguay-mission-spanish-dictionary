@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   categories,
+  getRelatedSearchSuggestions,
   phrases,
   quickAccess,
   searchPhrases,
@@ -66,6 +67,9 @@ const subcategoryLabels: Record<string, string> = {
   'Prayer Expressions': '기도 표현',
   'Encouragement & Comfort': '격려 및 위로',
   'Gratitude & Blessings': '감사 및 축복',
+  'Family & Friends': '가족 및 친구',
+  'Polite Expressions': '정중한 표현',
+  'Everyday Words': '일상 단어',
 };
 type View = 'dictionary' | 'conversations' | 'numbers';
 
@@ -143,7 +147,7 @@ function App() {
     return [...new Set(phrases.filter((phrase) => phrase.category === category.id).map((phrase) => phrase.subcategory))];
   }, [category]);
 
-  const visiblePhrases = useMemo(() => {
+  const searchSource = useMemo(() => {
     let filtered = phrases;
     if (activeCategory === FAVORITES) {
       filtered = phrases.filter((phrase) => favorites.includes(phrase.id));
@@ -151,8 +155,13 @@ function App() {
       filtered = phrases.filter((phrase) => phrase.category === activeCategory);
     }
     if (activeSubcategory) filtered = filtered.filter((phrase) => phrase.subcategory === activeSubcategory);
-    return searchPhrases(query, filtered);
-  }, [activeCategory, activeSubcategory, favorites, query]);
+    return filtered;
+  }, [activeCategory, activeSubcategory, favorites]);
+  const visiblePhrases = useMemo(() => searchPhrases(query, searchSource), [query, searchSource]);
+  const searchSuggestions = useMemo(
+    () => getRelatedSearchSuggestions(query, searchSource),
+    [query, searchSource],
+  );
   const setCategory = (nextCategory: typeof activeCategory, subcategory = '') => {
     setActiveCategory(nextCategory);
     setActiveSubcategory(subcategory);
@@ -201,8 +210,8 @@ function App() {
       <header className="app-header">
         <div className="brand-mark" aria-hidden="true">🇵🇾</div>
         <div className="eyebrow">Misión Paraguay</div>
-        <h1>선교 스페인어 사전</h1>
-        <p>파라과이에서 바로 쓰는 한국어 · 스페인어 phrasebook</p>
+        <h1>선교 스페인어 · 과라니 사전</h1>
+        <p>영어 · 한국어로 찾는 파라과이 스페인어 · 과라니어 phrasebook</p>
         <div className={`offline-status ${isOnline ? '' : 'offline'}`} role="status">
           <span aria-hidden="true">{isOnline ? '●' : '○'}</span>
           {isOnline ? '오프라인에서도 사용 가능' : '오프라인 사용 중'}
@@ -261,7 +270,7 @@ function App() {
           <div className="quick-row">
             {quickAccess.map((item) => (
               <button type="button" className="quick-chip" key={item.label}
-                onClick={() => setCategory(item.category, item.subcategory)}>
+                onClick={() => 'action' in item ? openNumbers() : setCategory(item.category, item.subcategory)}>
                 {item.label}
               </button>
             ))}
@@ -339,7 +348,7 @@ function App() {
           <section className="category-section" aria-label="주요 분류">
             <div className="section-heading">
               <h2>상황별 문장</h2>
-              <span>10개 분류 · {phrases.length}개 문장</span>
+              <span>{categories.length}개 분류 · {phrases.length}개 문장</span>
             </div>
             <button type="button" className="category-card numbers-feature-card" onClick={openNumbers}>
               <span className="category-icon" aria-hidden="true">123</span>
@@ -388,20 +397,56 @@ function App() {
                 return (
                   <article className="phrase-card" key={phrase.id}>
                     <div className="phrase-meta">
-                      <span>{categories.find((item) => item.id === phrase.category)?.label} <span aria-hidden="true">·</span> {subcategoryLabels[phrase.subcategory] ?? phrase.subcategory}</span>
+                      <span>
+                        {categories.find((item) => item.id === phrase.category)?.label} <span aria-hidden="true">·</span> {subcategoryLabels[phrase.subcategory] ?? phrase.subcategory}
+                        <span className={`phrase-language-badge ${phrase.language === 'Guaraní' ? 'guarani' : ''}`}>
+                          {phrase.language === 'Guaraní' ? 'Guaraní' : 'Español'}
+                        </span>
+                      </span>
                       <button type="button" className={`favorite-button ${isFavorite ? 'active' : ''}`}
                         onClick={() => toggleFavorite(phrase.id)} aria-label={isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
                         aria-pressed={isFavorite}>{isFavorite ? '★' : '☆'}</button>
                     </div>
-                    <div className="spanish-text" lang="es">{phrase.spanish}</div>
+                    <div className="spanish-text" lang={phrase.language === 'Guaraní' ? 'gn' : 'es'}>
+                      {phrase.language === 'Guaraní' ? phrase.guarani : phrase.spanish}
+                    </div>
+                    {phrase.language === 'Guaraní' && (
+                      <div className="english-meaning"><span>English</span>{phrase.englishTranslation}</div>
+                    )}
                     <div className="korean-text">{phrase.korean}</div>
                     <div className="pronunciation"><span>발음</span>{phrase.pronunciation}</div>
+                    {phrase.language === 'Guaraní' && phrase.usageContext && (
+                      <div className="phrase-usage-context">{phrase.usageContext}</div>
+                    )}
                     <div className="phrase-actions">
                       <button type="button" className="show-local-button" onClick={() => setShowLocalPhrase(phrase)}>현지인에게 보여주기</button>
                     </div>
                   </article>
                 );
-              }) : <div className="empty-state">{query ? '검색 결과가 없어요. 다른 영어 또는 한국어 단어를 입력해 보세요.' : activeCategory === FAVORITES ? '아직 저장한 즐겨찾기가 없어요.' : '이 분류에는 문장이 없어요.'}</div>}
+              }) : (
+                <div className="empty-state">
+                  {query ? '검색 결과가 없어요. 아래 관련 검색어를 선택하거나 다른 영어 또는 한국어 단어를 입력해 보세요.' : activeCategory === FAVORITES ? '아직 저장한 즐겨찾기가 없어요.' : '이 분류에는 문장이 없어요.'}
+                  {query && searchSuggestions.length > 0 && (
+                    <div className="related-searches">
+                      <strong>추천 검색</strong>
+                      <div className="related-search-list">
+                        {searchSuggestions.map((suggestion) => (
+                          <button type="button" className="related-search-chip" key={suggestion}
+                            onClick={() => {
+                              setActiveCategory(ALL_CATEGORIES);
+                              setActiveSubcategory('');
+                              setShowFavorites(false);
+                              setView('dictionary');
+                              setQuery(suggestion);
+                            }}>
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
           </>
         )}
@@ -412,8 +457,13 @@ function App() {
         <div className="show-local-overlay" role="presentation" onClick={() => setShowLocalPhrase(null)}>
           <section className="show-local-view" role="dialog" aria-modal="true" aria-label="현지인에게 보여줄 문장" onClick={(event) => event.stopPropagation()}>
             <button type="button" className="close-local-button" onClick={() => setShowLocalPhrase(null)} aria-label="닫기">×</button>
-            <div className="show-local-label">Por favor, lea esto</div>
-            <p className="show-local-spanish" lang="es">{showLocalPhrase.spanish}</p>
+            <div className="show-local-label">{showLocalPhrase.language === 'Guaraní' ? 'Guaraní' : 'Por favor, lea esto'}</div>
+            <p className="show-local-spanish" lang={showLocalPhrase.language === 'Guaraní' ? 'gn' : 'es'}>
+              {showLocalPhrase.language === 'Guaraní' ? showLocalPhrase.guarani : showLocalPhrase.spanish}
+            </p>
+            {showLocalPhrase.language === 'Guaraní' && (
+              <p className="show-local-english">English: {showLocalPhrase.englishTranslation}</p>
+            )}
             <p className="show-local-korean">{showLocalPhrase.korean}</p>
             <p className="show-local-pronunciation">{showLocalPhrase.pronunciation}</p>
           </section>

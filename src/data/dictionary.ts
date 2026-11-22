@@ -1,5 +1,6 @@
 import { categories as legacyCategories, phrases as legacyPhrases } from './phrases';
 import { additionalPhrases } from './additionalPhrases';
+import { guaraniPhrases } from './guaraniPhrases';
 
 export const categories = [
   { id: 'VBS & Kids', label: 'VBS · 어린이 사역', icon: '🧒' },
@@ -12,20 +13,34 @@ export const categories = [
   { id: 'Health & Emergency', label: '건강 · 긴급 상황', icon: '🏥' },
   { id: 'Church & Ministry', label: '교회 · 사역', icon: '⛪' },
   { id: 'Prayer & Blessings', label: '기도 · 축복', icon: '🙏' },
+  { id: 'Guaraní', label: '🇵🇾 Guaraní', icon: '🗣️' },
 ] as const;
 
 export type DictionaryCategory = (typeof categories)[number]['id'];
 
-export type DictionaryPhrase = {
+type DictionaryPhraseBase = {
   id: number;
   category: DictionaryCategory;
   subcategory: string;
-  spanish: string;
   korean: string;
   pronunciation: string;
   englishKeywords: string[];
   koreanSynonyms: string[];
 };
+
+export type SpanishDictionaryPhrase = DictionaryPhraseBase & {
+  language?: 'Spanish';
+  spanish: string;
+};
+
+export type GuaraniDictionaryPhrase = DictionaryPhraseBase & {
+  language: 'Guaraní';
+  guarani: string;
+  englishTranslation: string;
+  usageContext?: string;
+};
+
+export type DictionaryPhrase = SpanishDictionaryPhrase | GuaraniDictionaryPhrase;
 
 const categoryDetails: Record<DictionaryCategory, { subcategory: string; english: string[]; korean: string[] }> = {
   'VBS & Kids': { subcategory: 'Games & Activities', english: ['children', 'kids', 'VBS'], korean: ['어린이', '아이들', 'VBS', '놀이'] },
@@ -38,6 +53,7 @@ const categoryDetails: Record<DictionaryCategory, { subcategory: string; english
   'Health & Emergency': { subcategory: 'Medical Help', english: ['health', 'emergency', 'medical', 'help'], korean: ['건강', '긴급', '의료', '도움'] },
   'Church & Ministry': { subcategory: 'Church Services', english: ['church', 'ministry', 'worship', 'volunteer'], korean: ['교회', '사역', '예배', '봉사'] },
   'Prayer & Blessings': { subcategory: 'Prayer Expressions', english: ['prayer', 'blessing', 'comfort'], korean: ['기도', '축복', '기도하다', '위로'] },
+  'Guaraní': { subcategory: 'Greetings & Introductions', english: ['Guaraní', 'greetings'], korean: ['과라니어', '인사'] },
 };
 
 const tagKeywords: Record<string, string[]> = {
@@ -140,7 +156,7 @@ function legacySubcategory(category: DictionaryCategory, tags: string[]): string
   return 'Prayer Expressions';
 }
 
-const legacyPhrasesWithMetadata: DictionaryPhrase[] = legacyPhrases.map((phrase) => {
+const legacyPhrasesWithMetadata: SpanishDictionaryPhrase[] = legacyPhrases.map((phrase) => {
   const category = phrase.id === 31 ? 'Restrooms & Directions' : legacyCategoryMap[phrase.category];
   const details = categoryDetails[category];
   const tags = phrase.tags;
@@ -167,6 +183,7 @@ const legacyPhrasesWithMetadata: DictionaryPhrase[] = legacyPhrases.map((phrase)
 export const phrases: DictionaryPhrase[] = [
   ...legacyPhrasesWithMetadata,
   ...additionalPhrases.map((phrase, index) => ({ ...phrase, id: 203 + index })),
+  ...guaraniPhrases.map((phrase, index) => ({ ...phrase, id: 203 + additionalPhrases.length + index })),
 ];
 
 export const quickAccess = [
@@ -176,16 +193,64 @@ export const quickAccess = [
   { label: '길 찾기', category: 'Restrooms & Directions', subcategory: 'Asking for Directions' },
   { label: '음식', category: 'Food & Restaurants' },
   { label: '기도', category: 'Prayer & Blessings' },
-] satisfies { label: string; category: DictionaryCategory; subcategory?: string }[];
+  { label: '123 Numbers', action: 'numbers' },
+  { label: '🇵🇾 Guaraní', category: 'Guaraní' },
+] satisfies (
+  | { label: string; category: DictionaryCategory; subcategory?: string }
+  | { label: string; action: 'numbers' }
+)[];
 
 export function normalizeSearchText(value: string): string {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFC')
     .toLocaleLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
     .replace(/\s+/g, ' ');
+}
+
+const synonymGroups = [
+  ['bathroom', 'restroom', 'toilet', 'washroom', 'lavatory', 'loo', '화장실', '변소'],
+  ['hungry', 'hunger', 'starving', '배고픔', '배고파', '배고프다', '배고파요'],
+  ['thirsty', 'thirst', '목마름', '목말라', '목마르다', '목말라요'],
+  ['children', 'child', 'kids', 'kid', '어린이', '아이들', '아이'],
+  ['directions', 'direction', 'way', 'route', '길찾기', '길 안내'],
+  ['price', 'cost', 'how much', '가격', '얼마'],
+  ['doctor', 'physician', '의사'],
+  ['store', 'shop', 'market', '가게', '상점', '시장'],
+  ['help', 'assistance', '도움', '도와주세요', '도와줘요'],
+  ['church', '교회'],
+  ['prayer', 'pray', '기도', '기도하다'],
+  ['gospel', 'faith', '복음', '신앙'],
+];
+
+const synonymLookup = new Map<string, Set<string>>();
+for (const group of synonymGroups) {
+  const normalizedGroup = group.map(normalizeSearchText);
+  for (const term of normalizedGroup) {
+    synonymLookup.set(term, new Set(normalizedGroup.filter((candidate) => candidate !== term)));
+  }
+}
+
+const englishStopWords = new Set([
+  'a', 'about', 'an', 'am', 'and', 'are', 'at', 'can', 'could', 'do', 'does', 'find',
+  'for', 'from', 'get', 'go', 'have', 'here', 'how', 'i', 'in', 'is', 'it', 'looking',
+  'me', 'my', 'near', 'need', 'of', 'on', 'please', 's', 'show', 'tell', 'the', 'there',
+  'this', 'to', 'want', 'we', 'what', 'where', 'with', 'would', 'you',
+]);
+
+const koreanStopWords = new Set([
+  '어디', '어디에', '어디서', '어디야', '어디예요', '어디인가요', '어디있어요', '어디있나요',
+  '어디있습니까', '어딨어요', '있어요', '있나요', '있습니까', '주세요', '해 주세요',
+  '해줘요', '부탁해요', '좀', '뭐', '무엇', '어떻게', '수', '있을까요',
+]);
+
+function getQueryTokens(query: string): string[] {
+  const tokens = normalizeSearchText(query).split(' ').filter(Boolean);
+  const meaningfulTokens = tokens.filter((token) => !englishStopWords.has(token) && !koreanStopWords.has(token));
+  return meaningfulTokens.length ? meaningfulTokens : tokens;
 }
 
 function editDistanceAtMostOne(left: string, right: string): boolean {
@@ -211,27 +276,73 @@ function editDistanceAtMostOne(left: string, right: string): boolean {
   return differences + Number(leftIndex < left.length || rightIndex < right.length) <= 1;
 }
 
+function getMatchTier(token: string, words: string[]): number | null {
+  if (words.includes(token)) return 0;
+
+  const synonyms = synonymLookup.get(token);
+  if (synonyms && words.some((word) => synonyms.has(word))) return 1;
+  if (token.length > 1 && words.some((word) =>
+    word.length > 1 && (word.includes(token) || token.includes(word))
+  )) return 2;
+  if (words.some((word) => editDistanceAtMostOne(token, word))) return 3;
+  return null;
+}
+
 export function searchPhrases(query: string, source: DictionaryPhrase[]): DictionaryPhrase[] {
   const needle = normalizeSearchText(query);
   if (!needle) return source;
-  const queryTokens = needle.split(' ');
+  const queryTokens = getQueryTokens(query);
+  if (!queryTokens.length) return [];
 
   return source
     .map((phrase) => {
-      const exactFields = [phrase.korean, ...phrase.koreanSynonyms, ...phrase.englishKeywords]
-        .map(normalizeSearchText);
-      if (exactFields.includes(needle)) return { phrase, score: 0 };
-      if (exactFields.some((field) => field.startsWith(needle))) return { phrase, score: 1 };
-      if (exactFields.some((field) => field.includes(needle))) return { phrase, score: 2 };
+      const fields = [
+        phrase.korean,
+        ...phrase.koreanSynonyms,
+        ...phrase.englishKeywords,
+        ...(phrase.language === 'Guaraní' ? [phrase.englishTranslation] : []),
+      ]
+        .map(normalizeSearchText)
+        .filter(Boolean);
+      if (fields.includes(needle)) return { phrase, score: 0 };
 
-      const words = exactFields.flatMap((field) => field.split(' '));
-      const matchingTokens = queryTokens.filter((token) =>
-        words.some((word) => word.includes(token) || editDistanceAtMostOne(token, word))
-      );
-      if (matchingTokens.length === queryTokens.length) return { phrase, score: 3 };
-      return null;
+      const words = [...new Set(fields.flatMap((field) => field.split(' ')))];
+      const tiers = queryTokens.map((token) => getMatchTier(token, words));
+      if (tiers.some((tier) => tier === null)) return null;
+
+      const matchedTiers = tiers.filter((tier): tier is number => tier !== null);
+      const worstTier = Math.max(...matchedTiers);
+      const unmatchedFields = matchedTiers.length - matchedTiers.filter((tier) => tier === 0).length;
+      return { phrase, score: worstTier * 100 + unmatchedFields * 10 };
     })
     .filter((match): match is { phrase: DictionaryPhrase; score: number } => match !== null)
     .sort((left, right) => left.score - right.score || left.phrase.id - right.phrase.id)
     .map(({ phrase }) => phrase);
+}
+
+const fallbackSuggestions = ['bathroom', 'directions', 'water', 'help', 'children', 'prayer'];
+
+export function getRelatedSearchSuggestions(query: string, source: DictionaryPhrase[]): string[] {
+  if (!source.length) return [];
+  const queryTokens = getQueryTokens(query);
+  const candidates = [...new Set(source.flatMap((phrase) =>
+    [...phrase.englishKeywords, ...phrase.koreanSynonyms]
+  ))]
+    .map((term) => ({ term, normalized: normalizeSearchText(term) }))
+    .filter(({ normalized }) => normalized.length > 2);
+
+  const nearMatches = candidates
+    .map(({ term, normalized }) => {
+      const distance = Math.min(...queryTokens.map((token) =>
+        token === normalized || normalized.split(' ').includes(token) ? 0
+          : normalized.includes(token) || token.includes(normalized) ? 1
+            : editDistanceAtMostOne(token, normalized) ? 2 : 99
+      ));
+      return { term, distance };
+    })
+    .filter(({ distance }) => distance < 99)
+    .sort((left, right) => left.distance - right.distance || left.term.localeCompare(right.term))
+    .map(({ term }) => term);
+
+  return [...new Set([...nearMatches, ...fallbackSuggestions])].slice(0, 5);
 }
